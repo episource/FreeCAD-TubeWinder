@@ -1,0 +1,290 @@
+# -*- coding: utf-8 -*-
+
+__Name__ = 'animate-tubebinder'
+__Comment__ = 'Animates the tube binder assembly for preview image creation.'
+__Author__ = 'Philipp Serr (episource.de)'
+__Version__ = '0.1'
+__Date__ = '2020-05-10'
+__License__ = 'CC-BY-4.0'
+__Web__ = 'https://github.com/episource/FreeCAD-TubeWinder'
+__Wiki__ = ''
+__Icon__ = ''
+__Help__ = 'Just run this macro with the tube winder document loaded.'
+__Status__ = 'Beta'
+__Requires__ = 'FreeCAD >= 0.19'
+__Communication__ = ''
+
+from PySide import QtCore
+from glob import glob
+from math import isnan
+from matplotlib import numpy
+from matplotlib.pyplot import imread
+from pathlib import Path
+from pivy import coin
+import shutil
+
+# render bigger than needed and downscale later for improved image quality!
+SIZE = (4096, 3072) 
+ANTI_ALIAS = 4
+SAFETY_MARGIN_PIXEL = 4
+SAVE_PICTURE_METHOD = "QtOffscreenRenderer"
+RATE_LIMIT = 2
+
+# Set App.<Token> to any value to cancel
+# e.g. App.CancelTubeWinderAnimation = True
+CANCELATION_TOKEN = "CancelTubeWinderAnimation"
+
+
+docSwivelPlate = App.getDocument('SwivelPlate_WeihuaC16049_156x156')
+docJoint = App.getDocument('AP3030S8_Joint')
+docTubeWinder = App.getDocument('TubeWinder')
+imageDir = docTubeWinder.FileName + "_animation/"
+
+nan = float('nan')
+animation = []
+pendingJobs = []
+screenshotCounter = 0;
+rateLimitCounter = RATE_LIMIT
+shutdownFinished = False
+screenshotSize = None
+
+
+def recompute(objOrDoc):
+#    print("recomputing: " + objOrDoc.Label)
+    q = [objOrDoc]
+    docs = []
+    idx = 0
+        
+    while len(q) > 0:
+        next = q.pop(0)
+        
+        if hasattr(next, 'InList'):
+            for obj in next.InList:
+                if hasattr(obj, 'touch'):
+                    obj.touch()
+                if obj not in q:
+                    q.append(obj)
+        if hasattr(next, 'Document'):
+            if next.Document not in q:
+                q.append(next.Document)
+                
+        if isinstance(next, App.ActiveDocument.__class__):
+            docs.append(next)
+    
+    
+    for d in docs:
+        d.recompute()
+        
+def appendJob(job):
+    pendingJobs.append(job)
+
+def appendHighPrioJob(highPrioJob):
+    pendingJobs.insert(0, highPrioJob)
+            
+def appendRecomputeJob(objOrDoc):
+    recomputeJob = lambda: recompute(objOrDoc)
+    appendHighPrioJob(recomputeJob)
+
+def rotateSwivelPlate(deg):
+    global pendingJobs
+
+    print("new swivel plate angle: " + str(deg))
+    docSwivelPlate.Variables.RotationDeg = deg
+    
+    # for recompute to be effective, the job needs to be repeated twice!?
+    appendRecomputeJob(docSwivelPlate.Variables)
+    appendRecomputeJob(docSwivelPlate.Variables)
+
+def rotateJoint(deg):
+    global pendingJobs
+
+    print("new joint angle: " + str(deg))
+    docJoint.Variables.AssyJointAngleDeg = deg
+    
+    # for recompute to be effective, the job needs to be repeated twice!?
+    appendRecomputeJob(docJoint.Variables)
+    appendRecomputeJob(docJoint.Variables)
+    
+def done():
+    global shutdownFinished
+    
+    animation.clear()
+    pendingJobs.clear()
+    
+    rotateSwivelPlate(initialSwivelPlateRotationDeg)
+    rotateJoint(initialJointAngleDeg)
+    
+    viewParamGroup.SetString(savePictureParam, initialSavePictureMethod)
+    viewTubeWinder.setAnimationEnabled(initialAnimationEnabled)
+    vrm.setWindowSize(coin.SbVec2s(initialWindowSize[0], initialWindowSize[1]))
+    viewTubeWinder.redraw()
+    
+    shutdownFinished = True
+    
+def screenshot(color = "Current", fileName = None, savePictureMethod = SAVE_PICTURE_METHOD):
+    global screenshotCounter
+    
+    Path(imageDir).mkdir(parents=True, exist_ok=True)
+    
+    if not fileName is None:
+        path = imageDir + fileName
+    else: 
+        screenshotCounter += 1
+        path = "{}{:03d}_{:.2f}_{:.2f}.png".format(
+            imageDir, screenshotCounter,
+            docSwivelPlate.Variables.RotationDeg,
+            docJoint.Variables.AssyJointAngleDeg)
+    
+    print("Screenshot: " + path)
+    size = viewTubeWinder.getSize()
+    viewParamGroup.SetString(savePictureParam, savePictureMethod)
+    Gui.activeView().saveImage(path, int(size[0]), int(size[1]), color, "", int(ANTI_ALIAS))
+    
+def evalProbes():
+    global screenshotSize
+
+    probeFiles = glob(imageDir + "probe*.png")
+    if len(probeFiles) == 0:
+        return
+    
+    # dimensions: 0: height; 1: width
+    xMin = viewTubeWinder.getSize()[0]
+    yMin = viewTubeWinder.getSize()[1]
+    xMax = 0.0
+    yMax = 0.0
+    for p in probeFiles:
+        # dimension 0: height; 1: width; 3: colors
+        # brightness normalized to 0.0 .. 1.0
+        pImg = imread(p).min(2)
+        for dim in range(0,2):
+            contentIdx = numpy.where(pImg.min(dim) < 1.0)[0]
+            if len(contentIdx) == 0:
+                continue
+            
+            if dim > 0:
+                yMin = min(yMin, contentIdx[0] - SAFETY_MARGIN_PIXEL)
+                yMax = max(yMax, contentIdx[-1] + SAFETY_MARGIN_PIXEL)
+            else:
+                xMin = min(xMin, contentIdx[0] - SAFETY_MARGIN_PIXEL)
+                xMax = max(xMax, contentIdx[-1] + SAFETY_MARGIN_PIXEL)
+    
+    print("auto crop / box zoom: ({},{}),({},{})".format(xMin, yMin, xMax, yMax))
+    viewTubeWinder.boxZoom(int(xMin), int(yMin), int(xMax), int(yMax))
+        
+def update():
+    global pendingJobs
+    global rateLimitCounter
+
+    try:
+        rateLimitCounter -= 1
+        if rateLimitCounter > 0:
+            return
+        rateLimitCounter = RATE_LIMIT
+        
+        if hasattr(App, CANCELATION_TOKEN):
+            delattr(App, CANCELATION_TOKEN)
+            done()
+        
+        if len(pendingJobs) > 0:
+            job = pendingJobs.pop(0)
+            job()
+            return;
+            
+        if shutdownFinished:
+            print("animation done - stopping QTimer")
+            timer.stop()
+            return;
+        
+        if len(animation) == 0:
+            done()
+            return
+            
+        next = animation.pop(0)
+        
+        if not isnan(next[0]):
+            appendJob(lambda deg=next[0]: rotateSwivelPlate(deg))
+        if not isnan(next[1]):
+            appendJob(lambda deg=next[1]: rotateJoint(deg))
+        appendJob(screenshot)
+        
+    except Exception as e:
+        print(e)
+        animation.clear()
+        pendingJobs.clear()
+        done()
+
+
+#
+# delete files from previous run
+try:
+    shutil.rmtree(imageDir)
+except:
+    print("failed to delete: " + imageDir)
+    
+    
+#
+# disable animation & setup view
+Gui.setActiveDocument(docTubeWinder)
+viewTubeWinder = Gui.activeView()
+initialAnimationEnabled = viewTubeWinder.isAnimationEnabled()
+viewTubeWinder.setAnimationEnabled(False)
+
+vrm = viewTubeWinder.getViewer().getSoRenderManager()
+initialWindowSize = viewTubeWinder.getSize()
+vrm.setWindowSize(coin.SbVec2s(SIZE[0], SIZE[1]))
+viewTubeWinder.redraw()
+
+
+#
+# set save picture method
+viewParamGroup = App.ParamGet("User parameter:BaseApp/Preferences/View")
+savePictureParam = "SavePicture"
+initialSavePictureMethod = viewParamGroup.GetString(savePictureParam)
+
+
+#
+# remember initial rotation
+initialSwivelPlateRotationDeg = docSwivelPlate.Variables.RotationDeg
+initialJointAngleDeg = docJoint.Variables.AssyJointAngleDeg
+
+
+#
+# determine necessary viewport size
+probes = [(nan, 0), (nan, 57), (nan, 60), (nan, 63), (nan, 90)]
+viewTubeWinder.viewIsometric()
+viewTubeWinder.fitAll()
+
+for idx,p in enumerate(probes):
+    if not isnan(p[0]):
+        appendJob(lambda deg=p[0]: rotateSwivelPlate(deg))
+    if not isnan(p[1]):
+        appendJob(lambda deg=p[1]: rotateJoint(deg))
+    # Use QtOffscreenRenderer: Does not print coordinate cross!
+    appendJob(lambda fileName=("probe" + str(idx) + ".png"): screenshot(color = "White", fileName = fileName, savePictureMethod = "QtOffscreenRenderer"))
+
+appendJob(evalProbes)
+
+
+#
+# Setup animation
+animation.append((180,90))
+for deg in range(87, -1, -3):
+    animation.append((nan, deg))
+for deg in range(177, -181, -3):
+    animation.append((deg, nan))
+for deg in range(3, 91, 3):
+    animation.append((nan, deg))
+    
+
+
+#
+# Start processing
+
+# Use QTimer to schedule next frame when all pending updates
+# have finished
+# interval 0: times out as soon as all events in the 
+# window system's event queue have been processed!
+# invoke App._MacroAnimationTimer.stop() to cancel invocation
+timer = QtCore.QTimer()
+timer.timeout.connect(update)
+timer.start()
