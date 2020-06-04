@@ -5,6 +5,35 @@ three people for larger tubes.
 
 ![TubeWinder Preview](TubeWinder.png)
 
+## Parts
+
+| Quantity | Type                             | Label      | Description                                                                                                                                   |
+|----------|----------------------------------|------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| 4        | AP3030S8                         | 42,00 mm   |                                                                                                                                               |
+| 4        | AP3030S8                         | 400,00 mm  |                                                                                                                                               |
+| 4        | AP3030S8                         | 427,46 mm  |                                                                                                                                               |
+| 2        | AP3030S8                         | 450,00 mm  |                                                                                                                                               |
+| 4        | AP3030S8                         | 560,00 mm  |                                                                                                                                               |
+| 2        | AP3030S8                         | 1150,00 mm |                                                                                                                                               |
+| 8        | AP3030S8_AngleConnector45        |            |                                                                                                                                               |
+| 15       | AP3030S8_BracketSmall            |            |                                                                                                                                               |
+| 16       | AP3030S8_Cap                     |            |                                                                                                                                               |
+| 2        | AP3030S8_ConnectorSquare         |            |                                                                                                                                               |
+| 9        | AP3030S8_InnerBracketWithScrews  |            | Inner bracket usually shipped including two set screws.                                                                                       |
+| 2        | AP3030S8_Joint                   |            |                                                                                                                                               |
+| 39       | AP3030S8_StoneM6Heavy            |            |                                                                                                                                               |
+| 22       | AP3030S8_StoneM8Heavy            |            |                                                                                                                                               |
+| 1        | AP3030S8_TNutM6                  |            |                                                                                                                                               |
+| 6        | KnuckleFoot_M8x50                |            |                                                                                                                                               |
+| 1        | Nomis_C-Clamp_WithMod            |            | Spigot removed. Two additional 6,5mm holes need to be drilled. Availble via Amazon or ebay, look for "NOMIS C-Klemme mit Spigot".             |
+| 1        | Screw/Bolt ISO4762               | M6x12      |                                                                                                                                               |
+| 4        | Screw/Bolt ISO4762               | M8x25      |                                                                                                                                               |
+| 8        | Screw/Bolt ISO7380-1             | M8x12      |                                                                                                                                               |
+| 8        | Screw/Bolt ISO7380-1             | M8x25      |                                                                                                                                               |
+| 39       | Screw/Bolt ISO7380-2             | M6x12      |                                                                                                                                               |
+| 8        | Screw/Bolt ISO7380-2             | M8x10      |                                                                                                                                               |
+| 1        | SwivelPlate_WeihuaC16049_156x156 |            | Hole with diameter 8,5mm-9mm (M8) needs to be drilled at end of slot holes. Available via Amazon, search for "Drehteller für TDS Bootssitz". |
+
 ## Compatibility
 Prerelease builds of FreeCAD have been used to create the models. Therefore,
 incompatibilities with older or newer FreeCAD builds might occur. The following
